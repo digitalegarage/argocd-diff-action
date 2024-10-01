@@ -176,9 +176,11 @@ ${
         ? COLLAPSE_DIFF
           ? `
 <details>
+
 \`\`\`diff
 ${diff}
 \`\`\`
+
 </details>
 `
           : `
