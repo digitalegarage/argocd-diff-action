@@ -1916,6 +1916,8 @@ const VERSION = core.getInput('argocd-version');
 const ENV = core.getInput('environment');
 const PLAINTEXT = core.getInput('plaintext').toLowerCase() === "true";
 const COLLAPSE_DIFF = core.getInput('collapse-diff').toLowerCase() === "true";
+const TIMEZONE = core.getInput('timezone');
+const TIMEZONE_LOCALE = core.getInput('timezone-locale');
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
     EXTRA_CLI_ARGS += ' --plaintext';
@@ -2049,7 +2051,7 @@ ${diff}
 `);
         const output = scrubSecrets(`
 ${prefixHeader} for commit [\`${shortCommitSha}\`](${commitLink})
-_Updated at ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })} PT_
+_Updated at ${new Date().toLocaleString(TIMEZONE_LOCALE, { timeZone: TIMEZONE })} PT_
   ${diffOutput.join('\n')}
 
 | Legend | Status |
