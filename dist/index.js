@@ -1918,6 +1918,7 @@ const PLAINTEXT = core.getInput('plaintext').toLowerCase() === "true";
 const COLLAPSE_DIFF = core.getInput('collapse-diff').toLowerCase() === "true";
 const TIMEZONE = core.getInput('timezone');
 const TIMEZONE_LOCALE = core.getInput('timezone-locale');
+const DIFF_TOOL = core.getInput('diff-tool') || 'diff -N -u';
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
     EXTRA_CLI_ARGS += ' --plaintext';
@@ -1957,7 +1958,7 @@ function setupArgoCDCommand() {
         fs.chmodSync(path.join(argoBinaryPath), '755');
         // core.addPath(argoBinaryPath);
         return (params) => __awaiter(this, void 0, void 0, function* () {
-            return execCommand(`${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`);
+            return execCommand(`KUBECTL_EXTERNAL_DIFF='${DIFF_TOOL}' ${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`);
         });
     });
 }
