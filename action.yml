@@ -40,6 +40,10 @@ inputs:
     description: 'Time zone locale to use in comment'
     default: 'en-US'
     required: false
+  diff-tool:
+    description: 'Diff tool to use'
+    default: 'diff -N -u'
+    required: false
 runs:
   using: 'node12'
   main: 'dist/index.js'

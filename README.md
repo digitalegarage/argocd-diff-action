@@ -34,6 +34,7 @@ jobs:
           collapse-diff: false
           timezone: America/Los_Angeles
           timezone-locale: en-US
+          diff-tool: diff -N -u
 
 ```
 
