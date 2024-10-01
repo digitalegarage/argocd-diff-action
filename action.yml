@@ -28,6 +28,10 @@ inputs:
     description: Name of env to use in the diff title posted to the PR
     default: legacy
     required: false
+  collapse-diff: 
+    description: 'Setting this to true sets the diff expandable in a dropdown in the PR comment'
+    default: 'false'
+    required: false
 runs:
   using: 'node12'
   main: 'dist/index.js'

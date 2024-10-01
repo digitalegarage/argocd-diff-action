@@ -1915,6 +1915,7 @@ const ARGOCD_TOKEN = core.getInput('argocd-token');
 const VERSION = core.getInput('argocd-version');
 const ENV = core.getInput('environment');
 const PLAINTEXT = core.getInput('plaintext').toLowerCase() === "true";
+const COLLAPSE_DIFF = core.getInput('collapse-diff').toLowerCase() === "true";
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
     EXTRA_CLI_ARGS += ' --plaintext';
@@ -2028,12 +2029,20 @@ ${JSON.stringify(error.err)}
             : ''}
 
 ${diff
-            ? `
+            ? COLLAPSE_DIFF
+                ? `
+<details>
 
 \`\`\`diff
 ${diff}
 \`\`\`
 
+</details>
+`
+                : `
+\`\`\`diff
+${diff}
+\`\`\`
 `
             : ''}
 ---

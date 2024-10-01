@@ -38,6 +38,7 @@ const ARGOCD_TOKEN = core.getInput('argocd-token');
 const VERSION = core.getInput('argocd-version');
 const ENV = core.getInput('environment');
 const PLAINTEXT = core.getInput('plaintext').toLowerCase() === "true";
+const COLLAPSE_DIFF = core.getInput('collapse-diff').toLowerCase() === "true";
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
   EXTRA_CLI_ARGS += ' --plaintext';
@@ -149,7 +150,7 @@ async function postDiffComment(diffs: Diff[]): Promise<void> {
   }).filter(d => d.diff !== '');
 
   const prefixHeader = `## ArgoCD Diff on ${ENV}`
-  const diffOutput = filteredDiffs.map(
+const diffOutput = filteredDiffs.map(
     ({ app, diff, error }) => `
 App: [\`${app.metadata.name}\`](${protocol}://${ARGOCD_SERVER_URL}/applications/${app.metadata.name})
 YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
@@ -172,12 +173,20 @@ ${JSON.stringify(error.err)}
 
 ${
       diff
-        ? `
+        ? COLLAPSE_DIFF
+          ? `
+<details>
 
 \`\`\`diff
 ${diff}
 \`\`\`
 
+</details>
+`
+          : `
+\`\`\`diff
+${diff}
+\`\`\`
 `
         : ''
       }

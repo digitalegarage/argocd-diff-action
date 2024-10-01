@@ -31,6 +31,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           argocd-version: v1.6.1
           argocd-extra-cli-args: --grpc-web
+          collapse-diff: false
+
 ```
 
 ## How it works
