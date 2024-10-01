@@ -2028,20 +2028,20 @@ ${JSON.stringify(error.err)}
 `
             : ''}
 
-      ${diff
+${diff
             ? COLLAPSE_DIFF
                 ? `
-      <details>
-      \`\`\`diff
-      ${diff}
-      \`\`\`
-      </details>
-      `
+<details>
+\`\`\`diff
+${diff}
+\`\`\`
+</details>
+`
                 : `
-      \`\`\`diff
-      ${diff}
-      \`\`\`
-      `
+\`\`\`diff
+${diff}
+\`\`\`
+`
             : ''}
 ---
 `);

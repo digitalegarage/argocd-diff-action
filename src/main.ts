@@ -150,7 +150,7 @@ async function postDiffComment(diffs: Diff[]): Promise<void> {
   }).filter(d => d.diff !== '');
 
   const prefixHeader = `## ArgoCD Diff on ${ENV}`
-  const diffOutput = filteredDiffs.map(
+const diffOutput = filteredDiffs.map(
     ({ app, diff, error }) => `
 App: [\`${app.metadata.name}\`](${protocol}://${ARGOCD_SERVER_URL}/applications/${app.metadata.name})
 YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
@@ -171,29 +171,27 @@ ${JSON.stringify(error.err)}
         : ''
       }
 
-      ${
-        diff
-          ? COLLAPSE_DIFF
-            ? `
-      <details>
-      \`\`\`diff
-      ${diff}
-      \`\`\`
-      </details>
-      `
-            : `
-      \`\`\`diff
-      ${diff}
-      \`\`\`
-      `
-          : ''
+${
+      diff
+        ? COLLAPSE_DIFF
+          ? `
+<details>
+\`\`\`diff
+${diff}
+\`\`\`
+</details>
+`
+          : `
+\`\`\`diff
+${diff}
+\`\`\`
+`
+        : ''
       }
 ---
 `
   );
 
-
-  
   const output = scrubSecrets(`
 ${prefixHeader} for commit [\`${shortCommitSha}\`](${commitLink})
 _Updated at ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })} PT_
