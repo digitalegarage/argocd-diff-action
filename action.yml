@@ -32,6 +32,14 @@ inputs:
     description: 'Setting this to true sets the diff expandable in a dropdown in the PR comment'
     default: 'false'
     required: false
+  timezone:
+    description: 'Time zone to use in comment'
+    default: 'America/Los_Angeles'
+    required: false
+  timezone-locale:
+    description: 'Time zone locale to use in comment'
+    default: 'en-US'
+    required: false
 runs:
   using: 'node12'
   main: 'dist/index.js'

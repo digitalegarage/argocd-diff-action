@@ -32,6 +32,8 @@ jobs:
           argocd-version: v1.6.1
           argocd-extra-cli-args: --grpc-web
           collapse-diff: false
+          timezone: America/Los_Angeles
+          timezone-locale: en-US
 
 ```
 
