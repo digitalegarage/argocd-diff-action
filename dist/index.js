@@ -2423,6 +2423,7 @@ const COLLAPSE_DIFF = core.getInput('collapse-diff').toLowerCase() === "true";
 const TIMEZONE = core.getInput('timezone');
 const TIMEZONE_LOCALE = core.getInput('timezone-locale');
 const DIFF_TOOL = core.getInput('diff-tool') || 'diff -N -u';
+const TRACKING_LABEL = core.getInput('tracking-label') || 'argocd.argoproj.io/instance';
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
     EXTRA_CLI_ARGS += ' --plaintext';
@@ -2616,7 +2617,7 @@ function partOfApp(changedFiles, app) {
                 if (fileData.metadata && fileData.metadata.labels) {
                     const labels = fileData.metadata.labels;
                     console.log(`Metadata labels found in file: ${JSON.stringify(labels)}`);
-                    const isPartOfApp = labels['argocd.argoproj.io/instance'] === appName;
+                    const isPartOfApp = labels[TRACKING_LABEL] === appName;
                     console.log(`Is file part of app (${appName}) based on metadata labels: ${isPartOfApp}`);
                     if (isPartOfApp)
                         return true;
@@ -2626,7 +2627,7 @@ function partOfApp(changedFiles, app) {
                     const isPartOfApp = fileData.labels.some(label => {
                         const pairs = label.pairs;
                         console.log(`Label pairs found in file: ${JSON.stringify(pairs)}`);
-                        return pairs && pairs['argocd.argoproj.io/instance'] === appName;
+                        return pairs && pairs[TRACKING_LABEL] === appName;
                     });
                     console.log(`Is file part of app (${appName}) based on label pairs: ${isPartOfApp}`);
                     if (isPartOfApp)
@@ -2642,14 +2643,6 @@ function partOfApp(changedFiles, app) {
         }
         return false;
     });
-}
-function getFirstTwoDirectories(filePath) {
-    const normalizedPath = path.normalize(filePath);
-    const parts = normalizedPath.split(path.sep).filter(Boolean); // filter(Boolean) removes empty strings
-    if (parts.length < 2) {
-        return parts.join(path.sep); // Return the entire path if less than two directories
-    }
-    return parts.slice(0, 2).join(path.sep);
 }
 function asyncForEach(array, callback) {
     return __awaiter(this, void 0, void 0, function* () {
