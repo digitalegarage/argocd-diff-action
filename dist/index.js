@@ -2628,12 +2628,27 @@ function partOfApp(changedFiles, app) {
             console.log(`File content read successfully: ${file}`);
             const fileData = yaml.load(fileContent);
             console.log(`File parsed as YAML: ${file}`);
-            if (fileData && fileData.metadata && fileData.metadata.labels) {
-                const labels = fileData.metadata.labels;
-                console.log(`Labels found in file: ${JSON.stringify(labels)}`);
-                const isPartOfApp = labels['argocd.argoproj.io/instance'] === appName;
-                console.log(`Is file part of app (${appName}): ${isPartOfApp}`);
-                return isPartOfApp;
+            if (fileData) {
+                // Check metadata labels
+                if (fileData.metadata && fileData.metadata.labels) {
+                    const labels = fileData.metadata.labels;
+                    console.log(`Metadata labels found in file: ${JSON.stringify(labels)}`);
+                    const isPartOfApp = labels['argocd.argoproj.io/instance'] === appName;
+                    console.log(`Is file part of app (${appName}) based on metadata labels: ${isPartOfApp}`);
+                    if (isPartOfApp)
+                        return true;
+                }
+                // Check labels array with pairsfor kustomize
+                if (fileData.labels) {
+                    const isPartOfApp = fileData.labels.some(label => {
+                        const pairs = label.pairs;
+                        console.log(`Label pairs found in file: ${JSON.stringify(pairs)}`);
+                        return pairs && pairs['argocd.argoproj.io/instance'] === appName;
+                    });
+                    console.log(`Is file part of app (${appName}) based on label pairs: ${isPartOfApp}`);
+                    if (isPartOfApp)
+                        return true;
+                }
             }
             else {
                 console.log(`No labels found in file: ${file}`);
