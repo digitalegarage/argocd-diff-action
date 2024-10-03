@@ -5,6 +5,7 @@ import * as github from '@actions/github';
 import * as fs from 'fs';
 import * as path from 'path';
 import nodeFetch from 'node-fetch';
+import * as yaml from 'js-yaml';
 
 interface ExecResult {
   err?: Error | undefined;
@@ -253,12 +254,21 @@ async function getChangedFiles(): Promise<string[]> {
 }
 
 function partOfApp(changedFiles: string[], app: App): boolean {
-  const sourcePath = path.normalize(app.spec.source.path);
-  const appPath = getFirstTwoDirectories(sourcePath);
+  const appName = app.metadata.name;
 
   return changedFiles.some(file => {
-    const normalizedFilePath = path.normalize(file);
-    return normalizedFilePath.startsWith(appPath);
+    try {
+      const fileContent = fs.readFileSync(file, 'utf8');
+      const fileData = yaml.load(fileContent);
+
+      if (fileData && fileData.metadata && fileData.metadata.labels) {
+        const labels = fileData.metadata.labels;
+        return labels['argocd.argoproj.io/instance'] === appName;
+      }
+    } catch (error) {
+      console.error(`Error reading or parsing file ${file}:`, error);
+    }
+    return false;
   });
 }
 
