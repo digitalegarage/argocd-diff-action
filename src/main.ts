@@ -263,7 +263,7 @@ function partOfApp(changedFiles: string[], app: App): boolean {
       const fileContent = fs.readFileSync(file, 'utf8');
       console.log(`File content read successfully: ${file}`);
 
-      const fileData = yaml.load(fileContent);
+      const fileData = yaml.load(fileContent) as { metadata?: { labels?: { [key: string]: string } } };
       console.log(`File parsed as YAML: ${file}`);
 
       if (fileData && fileData.metadata && fileData.metadata.labels) {
