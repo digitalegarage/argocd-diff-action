@@ -255,15 +255,25 @@ async function getChangedFiles(): Promise<string[]> {
 
 function partOfApp(changedFiles: string[], app: App): boolean {
   const appName = app.metadata.name;
+  console.log(`Checking if changed files are part of the app: ${appName}`);
 
   return changedFiles.some(file => {
+    console.log(`Processing file: ${file}`);
     try {
       const fileContent = fs.readFileSync(file, 'utf8');
+      console.log(`File content read successfully: ${file}`);
+
       const fileData = yaml.load(fileContent);
+      console.log(`File parsed as YAML: ${file}`);
 
       if (fileData && fileData.metadata && fileData.metadata.labels) {
         const labels = fileData.metadata.labels;
-        return labels['argocd.argoproj.io/instance'] === appName;
+        console.log(`Labels found in file: ${JSON.stringify(labels)}`);
+        const isPartOfApp = labels['argocd.argoproj.io/instance'] === appName;
+        console.log(`Is file part of app (${appName}): ${isPartOfApp}`);
+        return isPartOfApp;
+      } else {
+        console.log(`No labels found in file: ${file}`);
       }
     } catch (error) {
       console.error(`Error reading or parsing file ${file}:`, error);
