@@ -2493,8 +2493,7 @@ function getApps() {
             const targetPrimary = targetRevision === 'master' || targetRevision === 'main' || targetRevision === 'HEAD' || !targetRevision;
             return (app.spec.source.repoURL.includes(`${github.context.repo.owner}/${github.context.repo.repo}`) && targetPrimary);
         });
-        const appsAffected = repoApps;
-        return appsAffected;
+        return repoApps;
     });
 }
 function postDiffComment(diffs) {

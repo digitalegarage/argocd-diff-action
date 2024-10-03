@@ -123,8 +123,7 @@ async function getApps(): Promise<App[]> {
     );
   });
 
-  const appsAffected = repoApps
-  return appsAffected;
+  return repoApps;
 
 }
 
