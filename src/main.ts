@@ -234,11 +234,9 @@ _Updated at ${new Date().toLocaleString(TIMEZONE_LOCALE, { timeZone: TIMEZONE })
   }
 }
 
-async function getChangedFiles(app: App): Promise<string[]> {
+async function getChangedFiles(): Promise<string[]> {
   const { owner, repo } = github.context.repo;
   const pull_number = github.context.issue.number;
-
-  console.log(`Fetching changed files for repo: ${owner}/${repo}, pull request: ${pull_number}`);
 
   const listFilesResponse = await octokit.rest.pulls.listFiles({
     owner,
@@ -246,26 +244,7 @@ async function getChangedFiles(app: App): Promise<string[]> {
     pull_number
   });
 
-  console.log(`Received list of changed files from GitHub API`);
-
-  const sourcePath = path.normalize(app.spec.source.path);
-  console.log(`Normalized application source path: ${sourcePath}`);
-
-  const changedFiles = listFilesResponse.data
-    .map(file => file.filename)
-    .filter(filename => {
-      const normalizedFilePath = path.normalize(filename);
-      const matches = normalizedFilePath.startsWith(sourcePath);
-      if (matches) {
-        console.log(`File: ${filename}, Normalized: ${normalizedFilePath}, Matches: ${matches}`);
-      } else {
-        console.log(`File: ${filename}, Normalized: ${normalizedFilePath}, Does not match source path: ${sourcePath}`);
-      }
-      return matches;
-    });
-
-  console.log(`Filtered changed files: ${JSON.stringify(changedFiles)}`);
-
+  const changedFiles = listFilesResponse.data.map(file => file.filename);
   return changedFiles;
 }
 
@@ -339,7 +318,7 @@ async function run(): Promise<void> {
   const diffs: Diff[] = [];
 
   await asyncForEach(apps, async app => {
-    const changedFiles = await getChangedFiles(app);
+    const changedFiles = await getChangedFiles();
     console.log(`Changed files: ${changedFiles.join(', ')}`);
     const appAffected = partOfApp(changedFiles, app);
     if (appAffected === false) {

@@ -2588,33 +2588,16 @@ _Updated at ${new Date().toLocaleString(TIMEZONE_LOCALE, { timeZone: TIMEZONE })
         }
     });
 }
-function getChangedFiles(app) {
+function getChangedFiles() {
     return __awaiter(this, void 0, void 0, function* () {
         const { owner, repo } = github.context.repo;
         const pull_number = github.context.issue.number;
-        console.log(`Fetching changed files for repo: ${owner}/${repo}, pull request: ${pull_number}`);
         const listFilesResponse = yield octokit.rest.pulls.listFiles({
             owner,
             repo,
             pull_number
         });
-        console.log(`Received list of changed files from GitHub API`);
-        const sourcePath = path.normalize(app.spec.source.path);
-        console.log(`Normalized application source path: ${sourcePath}`);
-        const changedFiles = listFilesResponse.data
-            .map(file => file.filename)
-            .filter(filename => {
-            const normalizedFilePath = path.normalize(filename);
-            const matches = normalizedFilePath.startsWith(sourcePath);
-            if (matches) {
-                console.log(`File: ${filename}, Normalized: ${normalizedFilePath}, Matches: ${matches}`);
-            }
-            else {
-                console.log(`File: ${filename}, Normalized: ${normalizedFilePath}, Does not match source path: ${sourcePath}`);
-            }
-            return matches;
-        });
-        console.log(`Filtered changed files: ${JSON.stringify(changedFiles)}`);
+        const changedFiles = listFilesResponse.data.map(file => file.filename);
         return changedFiles;
     });
 }
@@ -2682,7 +2665,7 @@ function run() {
         core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
         const diffs = [];
         yield asyncForEach(apps, (app) => __awaiter(this, void 0, void 0, function* () {
-            const changedFiles = yield getChangedFiles(app);
+            const changedFiles = yield getChangedFiles();
             console.log(`Changed files: ${changedFiles.join(', ')}`);
             const appAffected = partOfApp(changedFiles, app);
             if (appAffected === false) {
