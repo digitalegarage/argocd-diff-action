@@ -44,6 +44,10 @@ inputs:
     description: 'Diff tool to use'
     default: 'diff -N -u'
     required: false
+  tracking-label:
+    description: 'Label on which argocd tracks resources'
+    default: 'argocd.argoproj.io/instance'
+    required: false  
 runs:
   using: 'node12'
   main: 'dist/index.js'
