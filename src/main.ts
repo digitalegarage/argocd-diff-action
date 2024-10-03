@@ -122,12 +122,9 @@ async function getApps(): Promise<App[]> {
     );
   });
 
-  const changedFiles = await getChangedFiles();
-  console.log(`Changed files: ${changedFiles.join(', ')}`);
-  const appsAffected = repoApps.filter(app => {
-    return partOfApp(changedFiles, app)
-  });
+  const appsAffected = repoApps
   return appsAffected;
+
 }
 
 interface Diff {
@@ -154,13 +151,12 @@ async function postDiffComment(diffs: Diff[]): Promise<void> {
   }).filter(d => d.diff !== '');
 
   const prefixHeader = `## ArgoCD Diff on ${ENV}`
-const diffOutput = filteredDiffs.map(
+  const diffOutput = filteredDiffs.map(
     ({ app, diff, error }) => `
 App: [\`${app.metadata.name}\`](${protocol}://${ARGOCD_SERVER_URL}/applications/${app.metadata.name})
 YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
 App sync status: ${app.status.sync.status === 'Synced' ? 'Synced ✅' : 'Out of Sync ⚠️ '}
-${
-      error
+${error
         ? `
 **\`stderr:\`**
 \`\`\`
@@ -175,8 +171,7 @@ ${JSON.stringify(error.err)}
         : ''
       }
 
-${
-      diff
+${diff
         ? COLLAPSE_DIFF
           ? `
 <details>
@@ -239,9 +234,11 @@ _Updated at ${new Date().toLocaleString(TIMEZONE_LOCALE, { timeZone: TIMEZONE })
   }
 }
 
-async function getChangedFiles(): Promise<string[]> {
+async function getChangedFiles(app: App): Promise<string[]> {
   const { owner, repo } = github.context.repo;
   const pull_number = github.context.issue.number;
+
+  console.log(`Fetching changed files for repo: ${owner}/${repo}, pull request: ${pull_number}`);
 
   const listFilesResponse = await octokit.rest.pulls.listFiles({
     owner,
@@ -249,7 +246,26 @@ async function getChangedFiles(): Promise<string[]> {
     pull_number
   });
 
-  const changedFiles = listFilesResponse.data.map(file => file.filename);
+  console.log(`Received list of changed files from GitHub API`);
+
+  const sourcePath = path.normalize(app.spec.source.path);
+  console.log(`Normalized application source path: ${sourcePath}`);
+
+  const changedFiles = listFilesResponse.data
+    .map(file => file.filename)
+    .filter(filename => {
+      const normalizedFilePath = path.normalize(filename);
+      const matches = normalizedFilePath.startsWith(sourcePath);
+      if (matches) {
+        console.log(`File: ${filename}, Normalized: ${normalizedFilePath}, Matches: ${matches}`);
+      } else {
+        console.log(`File: ${filename}, Normalized: ${normalizedFilePath}, Does not match source path: ${sourcePath}`);
+      }
+      return matches;
+    });
+
+  console.log(`Filtered changed files: ${JSON.stringify(changedFiles)}`);
+
   return changedFiles;
 }
 
@@ -303,38 +319,47 @@ async function asyncForEach<T>(
 async function run(): Promise<void> {
   const argocd = await setupArgoCDCommand();
   const apps = await getApps();
+
   core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
 
   const diffs: Diff[] = [];
 
   await asyncForEach(apps, async app => {
-  const command = `app diff ${app.metadata.name} --local-repo-root=${process.cwd()} --local=${app.spec.source.path}`;
-    try {
-      core.info(`Running: argocd ${command}`);
-      // ArgoCD app diff will exit 1 if there is a diff, so always catch,
-      // and then consider it a success if there's a diff in stdout
-      // https://github.com/argoproj/argo-cd/issues/3588
-      await argocd(command);
-    } catch (e) {
-      const res = e as ExecResult;
-      core.info(`stdout: ${res.stdout}`);
-      core.info(`stderr: ${res.stderr}`);
-      if (res.stdout) {
-        diffs.push({ app, diff: res.stdout });
-      } else {
-        diffs.push({
-          app,
-          diff: '',
-          error: e
-        });
+    const changedFiles = await getChangedFiles(app);
+    console.log(`Changed files: ${changedFiles.join(', ')}`);
+    const appAffected = partOfApp(changedFiles, app);
+    if (appAffected === false) {
+      console.log(`App ${app.metadata.name} not affected by changes`);
+      return;
+    } else {
+      const command = `app diff ${app.metadata.name} --local-repo-root=${process.cwd()} --local=${app.spec.source.path}`;
+      try {
+        core.info(`Running: argocd ${command}`);
+        // ArgoCD app diff will exit 1 if there is a diff, so always catch,
+        // and then consider it a success if there's a diff in stdout
+        // https://github.com/argoproj/argo-cd/issues/3588
+        await argocd(command);
+      } catch (e) {
+        const res = e as ExecResult;
+        core.info(`stdout: ${res.stdout}`);
+        core.info(`stderr: ${res.stderr}`);
+        if (res.stdout) {
+          diffs.push({ app, diff: res.stdout });
+        } else {
+          diffs.push({
+            app,
+            diff: '',
+            error: e
+          });
+        }
+      }
+      await postDiffComment(diffs);
+      const diffsWithErrors = diffs.filter(d => d.error);
+      if (diffsWithErrors.length) {
+        core.setFailed(`ArgoCD diff failed: Encountered ${diffsWithErrors.length} errors`);
       }
     }
   });
-  await postDiffComment(diffs);
-  const diffsWithErrors = diffs.filter(d => d.error);
-  if (diffsWithErrors.length) {
-    core.setFailed(`ArgoCD diff failed: Encountered ${diffsWithErrors.length} errors`);
-  }
 }
 
 function filterDiff(diffText: string) {

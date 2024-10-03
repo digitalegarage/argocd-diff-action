@@ -2492,11 +2492,7 @@ function getApps() {
             const targetPrimary = targetRevision === 'master' || targetRevision === 'main' || targetRevision === 'HEAD' || !targetRevision;
             return (app.spec.source.repoURL.includes(`${github.context.repo.owner}/${github.context.repo.repo}`) && targetPrimary);
         });
-        const changedFiles = yield getChangedFiles();
-        console.log(`Changed files: ${changedFiles.join(', ')}`);
-        const appsAffected = repoApps.filter(app => {
-            return partOfApp(changedFiles, app);
-        });
+        const appsAffected = repoApps;
         return appsAffected;
     });
 }
@@ -2592,16 +2588,33 @@ _Updated at ${new Date().toLocaleString(TIMEZONE_LOCALE, { timeZone: TIMEZONE })
         }
     });
 }
-function getChangedFiles() {
+function getChangedFiles(app) {
     return __awaiter(this, void 0, void 0, function* () {
         const { owner, repo } = github.context.repo;
         const pull_number = github.context.issue.number;
+        console.log(`Fetching changed files for repo: ${owner}/${repo}, pull request: ${pull_number}`);
         const listFilesResponse = yield octokit.rest.pulls.listFiles({
             owner,
             repo,
             pull_number
         });
-        const changedFiles = listFilesResponse.data.map(file => file.filename);
+        console.log(`Received list of changed files from GitHub API`);
+        const sourcePath = path.normalize(app.spec.source.path);
+        console.log(`Normalized application source path: ${sourcePath}`);
+        const changedFiles = listFilesResponse.data
+            .map(file => file.filename)
+            .filter(filename => {
+            const normalizedFilePath = path.normalize(filename);
+            const matches = normalizedFilePath.startsWith(sourcePath);
+            if (matches) {
+                console.log(`File: ${filename}, Normalized: ${normalizedFilePath}, Matches: ${matches}`);
+            }
+            else {
+                console.log(`File: ${filename}, Normalized: ${normalizedFilePath}, Does not match source path: ${sourcePath}`);
+            }
+            return matches;
+        });
+        console.log(`Filtered changed files: ${JSON.stringify(changedFiles)}`);
         return changedFiles;
     });
 }
@@ -2654,35 +2667,44 @@ function run() {
         core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
         const diffs = [];
         yield asyncForEach(apps, (app) => __awaiter(this, void 0, void 0, function* () {
-            const command = `app diff ${app.metadata.name} --local-repo-root=${process.cwd()} --local=${app.spec.source.path}`;
-            try {
-                core.info(`Running: argocd ${command}`);
-                // ArgoCD app diff will exit 1 if there is a diff, so always catch,
-                // and then consider it a success if there's a diff in stdout
-                // https://github.com/argoproj/argo-cd/issues/3588
-                yield argocd(command);
+            const changedFiles = yield getChangedFiles(app);
+            console.log(`Changed files: ${changedFiles.join(', ')}`);
+            const appAffected = partOfApp(changedFiles, app);
+            if (appAffected === false) {
+                console.log(`App ${app.metadata.name} not affected by changes`);
+                return;
             }
-            catch (e) {
-                const res = e;
-                core.info(`stdout: ${res.stdout}`);
-                core.info(`stderr: ${res.stderr}`);
-                if (res.stdout) {
-                    diffs.push({ app, diff: res.stdout });
+            else {
+                const command = `app diff ${app.metadata.name} --local-repo-root=${process.cwd()} --local=${app.spec.source.path}`;
+                try {
+                    core.info(`Running: argocd ${command}`);
+                    // ArgoCD app diff will exit 1 if there is a diff, so always catch,
+                    // and then consider it a success if there's a diff in stdout
+                    // https://github.com/argoproj/argo-cd/issues/3588
+                    yield argocd(command);
                 }
-                else {
-                    diffs.push({
-                        app,
-                        diff: '',
-                        error: e
-                    });
+                catch (e) {
+                    const res = e;
+                    core.info(`stdout: ${res.stdout}`);
+                    core.info(`stderr: ${res.stderr}`);
+                    if (res.stdout) {
+                        diffs.push({ app, diff: res.stdout });
+                    }
+                    else {
+                        diffs.push({
+                            app,
+                            diff: '',
+                            error: e
+                        });
+                    }
+                }
+                yield postDiffComment(diffs);
+                const diffsWithErrors = diffs.filter(d => d.error);
+                if (diffsWithErrors.length) {
+                    core.setFailed(`ArgoCD diff failed: Encountered ${diffsWithErrors.length} errors`);
                 }
             }
         }));
-        yield postDiffComment(diffs);
-        const diffsWithErrors = diffs.filter(d => d.error);
-        if (diffsWithErrors.length) {
-            core.setFailed(`ArgoCD diff failed: Encountered ${diffsWithErrors.length} errors`);
-        }
     });
 }
 function filterDiff(diffText) {
