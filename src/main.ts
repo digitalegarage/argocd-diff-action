@@ -5,6 +5,7 @@ import * as github from '@actions/github';
 import * as fs from 'fs';
 import * as path from 'path';
 import nodeFetch from 'node-fetch';
+import * as yaml from 'js-yaml';
 
 interface ExecResult {
   err?: Error | undefined;
@@ -42,6 +43,7 @@ const COLLAPSE_DIFF = core.getInput('collapse-diff').toLowerCase() === "true";
 const TIMEZONE = core.getInput('timezone');
 const TIMEZONE_LOCALE = core.getInput('timezone-locale');
 const DIFF_TOOL = core.getInput('diff-tool') || 'diff -N -u';
+const TRACKING_LABEL = core.getInput('tracking-label') || 'argocd.argoproj.io/instance';
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
   EXTRA_CLI_ARGS += ' --plaintext';
@@ -121,12 +123,8 @@ async function getApps(): Promise<App[]> {
     );
   });
 
-  const changedFiles = await getChangedFiles();
-  console.log(`Changed files: ${changedFiles.join(', ')}`);
-  const appsAffected = repoApps.filter(app => {
-    return partOfApp(changedFiles, app)
-  });
-  return appsAffected;
+  return repoApps;
+
 }
 
 interface Diff {
@@ -153,13 +151,12 @@ async function postDiffComment(diffs: Diff[]): Promise<void> {
   }).filter(d => d.diff !== '');
 
   const prefixHeader = `## ArgoCD Diff on ${ENV}`
-const diffOutput = filteredDiffs.map(
+  const diffOutput = filteredDiffs.map(
     ({ app, diff, error }) => `
 App: [\`${app.metadata.name}\`](${protocol}://${ARGOCD_SERVER_URL}/applications/${app.metadata.name})
 YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
 App sync status: ${app.status.sync.status === 'Synced' ? 'Synced ✅' : 'Out of Sync ⚠️ '}
-${
-      error
+${error
         ? `
 **\`stderr:\`**
 \`\`\`
@@ -174,8 +171,7 @@ ${JSON.stringify(error.err)}
         : ''
       }
 
-${
-      diff
+${diff
         ? COLLAPSE_DIFF
           ? `
 <details>
@@ -253,22 +249,47 @@ async function getChangedFiles(): Promise<string[]> {
 }
 
 function partOfApp(changedFiles: string[], app: App): boolean {
-  const sourcePath = path.normalize(app.spec.source.path);
-  const appPath = getFirstTwoDirectories(sourcePath);
+  const appName = app.metadata.name;
+  
+  console.log(`Checking if changed files are part of the app: ${appName}`);
 
   return changedFiles.some(file => {
-    const normalizedFilePath = path.normalize(file);
-    return normalizedFilePath.startsWith(appPath);
-  });
-}
+    console.log(`Processing file: ${file}`);
+    try {
+      const fileContent = fs.readFileSync(file, 'utf8');
+      console.log(`File content read successfully: ${file}`);
 
-function getFirstTwoDirectories(filePath: string): string {
-  const normalizedPath = path.normalize(filePath);
-  const parts = normalizedPath.split(path.sep).filter(Boolean); // filter(Boolean) removes empty strings
-  if (parts.length < 2) {
-    return parts.join(path.sep); // Return the entire path if less than two directories
-  }
-  return parts.slice(0, 2).join(path.sep);
+      const fileData = yaml.load(fileContent) as { metadata?: { labels?: { [key: string]: string } }, labels?: { pairs?: { [key: string]: string } }[] };
+      console.log(`File parsed as YAML: ${file}`);
+
+      if (fileData) {
+        // Check metadata labels
+        if (fileData.metadata && fileData.metadata.labels) {
+          const labels = fileData.metadata.labels;
+          console.log(`Metadata labels found in file: ${JSON.stringify(labels)}`);
+          const isPartOfApp = labels[TRACKING_LABEL] === appName;
+          console.log(`Is file part of app (${appName}) based on metadata labels: ${isPartOfApp}`);
+          if (isPartOfApp) return true;
+        }
+
+        // Check labels array with pairsfor kustomize
+        if (fileData.labels) {
+          const isPartOfApp = fileData.labels.some(label => {
+            const pairs = label.pairs;
+            console.log(`Label pairs found in file: ${JSON.stringify(pairs)}`);
+            return pairs && pairs[TRACKING_LABEL] === appName;
+          });
+          console.log(`Is file part of app (${appName}) based on label pairs: ${isPartOfApp}`);
+          if (isPartOfApp) return true;
+        }
+      } else {
+        console.log(`No labels found in file: ${file}`);
+      }
+    } catch (error) {
+      console.error(`Error reading or parsing file ${file}:`, error);
+    }
+    return false;
+  });
 }
 
 async function asyncForEach<T>(
@@ -283,38 +304,47 @@ async function asyncForEach<T>(
 async function run(): Promise<void> {
   const argocd = await setupArgoCDCommand();
   const apps = await getApps();
+
   core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
 
   const diffs: Diff[] = [];
 
   await asyncForEach(apps, async app => {
-  const command = `app diff ${app.metadata.name} --local-repo-root=${process.cwd()} --local=${app.spec.source.path}`;
-    try {
-      core.info(`Running: argocd ${command}`);
-      // ArgoCD app diff will exit 1 if there is a diff, so always catch,
-      // and then consider it a success if there's a diff in stdout
-      // https://github.com/argoproj/argo-cd/issues/3588
-      await argocd(command);
-    } catch (e) {
-      const res = e as ExecResult;
-      core.info(`stdout: ${res.stdout}`);
-      core.info(`stderr: ${res.stderr}`);
-      if (res.stdout) {
-        diffs.push({ app, diff: res.stdout });
-      } else {
-        diffs.push({
-          app,
-          diff: '',
-          error: e
-        });
+    const changedFiles = await getChangedFiles();
+    console.log(`Changed files: ${changedFiles.join(', ')}`);
+    const appAffected = partOfApp(changedFiles, app);
+    if (appAffected === false) {
+      console.log(`App ${app.metadata.name} not affected by changes`);
+      return;
+    } else {
+      const command = `app diff ${app.metadata.name} --local-repo-root=${process.cwd()} --local=${app.spec.source.path}`;
+      try {
+        core.info(`Running: argocd ${command}`);
+        // ArgoCD app diff will exit 1 if there is a diff, so always catch,
+        // and then consider it a success if there's a diff in stdout
+        // https://github.com/argoproj/argo-cd/issues/3588
+        await argocd(command);
+      } catch (e) {
+        const res = e as ExecResult;
+        core.info(`stdout: ${res.stdout}`);
+        core.info(`stderr: ${res.stderr}`);
+        if (res.stdout) {
+          diffs.push({ app, diff: res.stdout });
+        } else {
+          diffs.push({
+            app,
+            diff: '',
+            error: e
+          });
+        }
+      }
+      await postDiffComment(diffs);
+      const diffsWithErrors = diffs.filter(d => d.error);
+      if (diffsWithErrors.length) {
+        core.setFailed(`ArgoCD diff failed: Encountered ${diffsWithErrors.length} errors`);
       }
     }
   });
-  await postDiffComment(diffs);
-  const diffsWithErrors = diffs.filter(d => d.error);
-  if (diffsWithErrors.length) {
-    core.setFailed(`ArgoCD diff failed: Encountered ${diffsWithErrors.length} errors`);
-  }
 }
 
 function filterDiff(diffText: string) {

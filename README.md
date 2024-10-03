@@ -35,6 +35,7 @@ jobs:
           timezone: America/Los_Angeles
           timezone-locale: en-US
           diff-tool: diff -N -u
+          tracking-label: argocd.argoproj.io/instance
 
 ```
 
