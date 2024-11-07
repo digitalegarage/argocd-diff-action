@@ -110,12 +110,12 @@ async function getApps(): Promise<App[]> {
     });
     responseJson = await response.json();
   } catch (e) {
-    core.error(e);
+    core.error(e as Error);
   }
-  const apps = responseJson.items as App[]
+  const apps = responseJson.items as App[];
   const repoApps = apps.filter(app => {
-    const targetRevision = app.spec.source.targetRevision
-    const targetPrimary = targetRevision === 'master' || targetRevision === 'main' || targetRevision === 'HEAD' || !targetRevision
+    const targetRevision = app.spec.source.targetRevision;
+    const targetPrimary = targetRevision === 'master' || targetRevision === 'main' || targetRevision === 'HEAD' || !targetRevision;
     return (
       app.spec.source.repoURL.includes(
         `${github.context.repo.owner}/${github.context.repo.repo}`
@@ -124,7 +124,6 @@ async function getApps(): Promise<App[]> {
   });
 
   return repoApps;
-
 }
 
 interface Diff {
@@ -334,7 +333,7 @@ async function run(): Promise<void> {
           diffs.push({
             app,
             diff: '',
-            error: e
+            error: res // Cast e to ExecResult
           });
         }
       }
