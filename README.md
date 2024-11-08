@@ -1,10 +1,43 @@
 # ArgoCD Diff GitHub Action
 
-This action generates a diff between the current PR and the current state of the cluster. 
+This action generates a diff between the current PR and the current state of the cluster.
 
 Note that this includes any changes between your branch and latest `master`, as well as ways in which the cluster is out of sync. 
 
+Its a fork from https://github.com/quizlet/argocd-diff-action which didn't meet our requirements, so we adapted it to meet our requirements.
+
 ## Usage
+
+Create the ARGOCD_TOKEN like:
+
+Ensure a user is present in ArgoCD, via ArgoCD Operator this looks like this:
+
+```yaml
+apiVersion: argoproj.io/v1beta1
+kind: ArgoCD
+metadata:
+  name: argocd
+spec:
+...
+  applicationInstanceLabelKey: argocd.argoproj.io/instance
+  rbac:
+    policy: |
+...
+      g, github-actions, role:readonly
+...
+```
+
+Login into Argocd
+
+```bash
+argocd login argocd.pub-staging.tech --username admin
+```
+
+Generate the token and save it to Github Secrets in the repository where the action should run:
+
+```bash
+argocd account generate-token --account github-actions
+```
 
 Example GH action:
 ```yaml
@@ -59,7 +92,7 @@ jobs:
 2. Connects to the ArgoCD API using the `argocd-token`, and gets all the apps
 3. Filters the apps to the ones that live in the current repo
 4. Gets all changed files in the PR
-5. Searches in changed or added kustomnization.yaml for 
+5. Searches in changed or added kustomization.yaml for 
 ```yaml
 labels:
   - pairs:
