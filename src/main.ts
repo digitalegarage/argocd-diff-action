@@ -154,12 +154,12 @@ async function postDiffComment(diffs: Diff[]): Promise<void> {
 
   const prefixHeader = `## ArgoCD Diff on ${ENV}`;
   const diffOutput = filteredDiffs.map(
-    ({ app, diff, error }) => `
+    ({ app, diff, error }: { app: App; diff: string; error?: ExecResult }) => `
 App: [\`${app.metadata.name}\`](${protocol}://${ARGOCD_SERVER_URL}/applications/${app.metadata.name})
 YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
 App sync status: ${app.status.sync.status === 'Synced' ? 'Synced ✅' : 'Out of Sync ⚠️ '}
 ${error
-        ? `
+      ? `
 **\`stderr:\`**
 \`\`\`
 ${error.stderr}
@@ -170,12 +170,12 @@ ${error.stderr}
 ${JSON.stringify(error.err)}
 \`\`\`
 `
-        : ''
-      }
+      : ''
+    }
 
 ${diff
-        ? COLLAPSE_DIFF
-          ? `
+      ? COLLAPSE_DIFF
+        ? `
 <details>
 
 \`\`\`diff
@@ -184,13 +184,13 @@ ${diff}
 
 </details>
 `
-          : `
+        : `
 \`\`\`diff
 ${diff}
 \`\`\`
 `
-        : ''
-      }
+      : ''
+    }
 ---
 `
   );
@@ -242,10 +242,13 @@ function splitIntoChunks(text: string, maxLength: number): string[] {
     if (end > text.length) {
       end = text.length;
     } else {
-      // Ensure we don't split in the middle of a line
+      // Ensure we don't split in the middle of a line or JSON object
       const lastNewline = text.lastIndexOf('\n', end);
+      const lastBrace = text.lastIndexOf('}', end);
       if (lastNewline > start) {
         end = lastNewline;
+      } else if (lastBrace > start) {
+        end = lastBrace + 1;
       }
     }
     chunks.push(text.slice(start, end));
