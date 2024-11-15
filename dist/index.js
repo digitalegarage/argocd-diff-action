@@ -137,94 +137,52 @@ function getApps() {
 }
 function postDiffComment(diffs) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c;
-        let protocol = 'https';
-        if (PLAINTEXT) {
-            protocol = 'http';
-        }
-        const { owner, repo } = github.context.repo;
-        const sha = (_b = (_a = github.context.payload.pull_request) === null || _a === void 0 ? void 0 : _a.head) === null || _b === void 0 ? void 0 : _b.sha;
-        const commitLink = `https://github.com/${owner}/${repo}/pull/${github.context.issue.number}/commits/${sha}`;
-        const shortCommitSha = String(sha).substr(0, 7);
-        // const filteredDiffs = diffs
-        const filteredDiffs = diffs.map(diff => {
-            diff.diff = filterDiff(diff.diff);
-            return diff;
-        }).filter(d => d.diff !== '');
-        const prefixHeader = `## ArgoCD Diff on ${ENV}`;
-        const diffOutput = filteredDiffs.map(({ app, diff, error }) => `
-App: [\`${app.metadata.name}\`](${protocol}://${ARGOCD_SERVER_URL}/applications/${app.metadata.name})
-YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
-App sync status: ${app.status.sync.status === 'Synced' ? 'Synced ✅' : 'Out of Sync ⚠️ '}
-${error
-            ? `
-**\`stderr:\`**
-\`\`\`
-${error.stderr}
-\`\`\`
-
-**\`command:\`**
-\`\`\`json
-${JSON.stringify(error.err)}
-\`\`\`
-`
-            : ''}
-
-${diff
-            ? COLLAPSE_DIFF
-                ? `
-<details>
-
-\`\`\`diff
-${diff}
-\`\`\`
-
-</details>
-`
-                : `
-\`\`\`diff
-${diff}
-\`\`\`
-`
-            : ''}
----
-`);
-        const output = scrubSecrets(`
-${prefixHeader} for commit [\`${shortCommitSha}\`](${commitLink})
-_Updated at ${new Date().toLocaleString(TIMEZONE_LOCALE, { timeZone: TIMEZONE })} PT_
-  ${diffOutput.join('\n')}
-
-| Legend | Status |
-| :---:  | :---   |
-| ✅     | The app is synced in ArgoCD, and diffs you see are solely from this PR. |
-| ⚠️      | The app is out-of-sync in ArgoCD, and the diffs you see include those changes plus any from this PR. |
-| 🛑     | There was an error generating the ArgoCD diffs due to changes in this PR. |
-`);
-        const commentsResponse = yield octokit.rest.issues.listComments({
-            issue_number: github.context.issue.number,
-            owner,
-            repo
-        });
-        // Delete stale comments
-        for (const comment of commentsResponse.data) {
-            if ((_c = comment.body) === null || _c === void 0 ? void 0 : _c.includes(prefixHeader)) {
-                core.info(`deleting comment ${comment.id}`);
-                octokit.rest.issues.deleteComment({
-                    owner,
-                    repo,
-                    comment_id: comment.id,
-                });
+        const maxCommentLength = 65536; // GitHub comment character limit
+        const commentHeader = "### ArgoCD Diff Results\n";
+        const commentFooter = "\n---\n";
+        for (const diff of diffs) {
+            let commentBody = `${commentHeader}\nApp: ${diff.app.metadata.name}\n\n\`\`\`diff\n${diff.diff}\n\`\`\`${commentFooter}`;
+            if (diff.error) {
+                commentBody += `\n**Error:**\n\`\`\`\n${diff.error.stderr}\n\`\`\``;
+            }
+            // Split the comment body if it exceeds the maximum length
+            if (commentBody.length > maxCommentLength) {
+                const chunks = splitIntoChunks(commentBody, maxCommentLength);
+                for (const chunk of chunks) {
+                    yield postComment(chunk);
+                }
+            }
+            else {
+                yield postComment(commentBody);
             }
         }
-        // Only post a new comment when there are changes
-        if (filteredDiffs.length) {
-            octokit.rest.issues.createComment({
-                issue_number: github.context.issue.number,
-                owner,
-                repo,
-                body: output
-            });
+    });
+}
+function splitIntoChunks(text, maxLength) {
+    const chunks = [];
+    let start = 0;
+    while (start < text.length) {
+        let end = start + maxLength;
+        if (end > text.length) {
+            end = text.length;
         }
+        else {
+            // Ensure we don't split in the middle of a line
+            const lastNewline = text.lastIndexOf('\n', end);
+            if (lastNewline > start) {
+                end = lastNewline;
+            }
+        }
+        chunks.push(text.slice(start, end));
+        start = end;
+    }
+    return chunks;
+}
+function postComment(body) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const octokit = github.getOctokit(core.getInput('github-token'));
+        const context = github.context;
+        yield octokit.rest.issues.createComment(Object.assign(Object.assign({}, context.repo), { issue_number: context.issue.number, body }));
     });
 }
 function getChangedFiles() {
