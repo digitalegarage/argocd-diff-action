@@ -136,20 +136,100 @@ async function postDiffComment(diffs: Diff[]): Promise<void> {
   const commentHeader = "### ArgoCD Diff Results\n";
   const commentFooter = "\n---\n";
 
-  for (const diff of diffs) {
-    let commentBody = `${commentHeader}\nApp: ${diff.app.metadata.name}\n\n\`\`\`diff\n${diff.diff}\n\`\`\`${commentFooter}`;
-    if (diff.error) {
-      commentBody += `\n**Error:**\n\`\`\`\n${diff.error.stderr}\n\`\`\``;
-    }
+  let protocol = 'https';
+  if (PLAINTEXT) {
+    protocol = 'http';
+  }
 
-    // Split the comment body if it exceeds the maximum length
-    if (commentBody.length > maxCommentLength) {
-      const chunks = splitIntoChunks(commentBody, maxCommentLength);
-      for (const chunk of chunks) {
-        await postComment(chunk);
+  const { owner, repo } = github.context.repo;
+  const sha = github.context.payload.pull_request?.head?.sha;
+
+  const commitLink = `https://github.com/${owner}/${repo}/pull/${github.context.issue.number}/commits/${sha}`;
+  const shortCommitSha = String(sha).substr(0, 7);
+
+  const filteredDiffs = diffs.map(diff => {
+    diff.diff = filterDiff(diff.diff);
+    return diff;
+  }).filter(d => d.diff !== '');
+
+  const prefixHeader = `## ArgoCD Diff on ${ENV}`;
+  const diffOutput = filteredDiffs.map(
+    ({ app, diff, error }) => `
+App: [\`${app.metadata.name}\`](${protocol}://${ARGOCD_SERVER_URL}/applications/${app.metadata.name})
+YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
+App sync status: ${app.status.sync.status === 'Synced' ? 'Synced ✅' : 'Out of Sync ⚠️ '}
+${error
+        ? `
+**\`stderr:\`**
+\`\`\`
+${error.stderr}
+\`\`\`
+
+**\`command:\`**
+\`\`\`json
+${JSON.stringify(error.err)}
+\`\`\`
+`
+        : ''
       }
-    } else {
-      await postComment(commentBody);
+
+${diff
+        ? COLLAPSE_DIFF
+          ? `
+<details>
+
+\`\`\`diff
+${diff}
+\`\`\`
+
+</details>
+`
+          : `
+\`\`\`diff
+${diff}
+\`\`\`
+`
+        : ''
+      }
+---
+`
+  );
+
+  const output = scrubSecrets(`
+${prefixHeader} for commit [\`${shortCommitSha}\`](${commitLink})
+_Updated at ${new Date().toLocaleString(TIMEZONE_LOCALE, { timeZone: TIMEZONE })} PT_
+  ${diffOutput.join('\n')}
+
+| Legend | Status |
+| :---:  | :---   |
+| ✅     | The app is synced in ArgoCD, and diffs you see are solely from this PR. |
+| ⚠️      | The app is out-of-sync in ArgoCD, and the diffs you see include those changes plus any from this PR. |
+| 🛑     | There was an error generating the ArgoCD diffs due to changes in this PR. |
+`);
+
+  const commentsResponse = await octokit.rest.issues.listComments({
+    issue_number: github.context.issue.number,
+    owner,
+    repo
+  });
+
+  // Delete stale comments
+  for (const comment of commentsResponse.data) {
+    if (comment.body?.includes(prefixHeader)) {
+      core.info(`deleting comment ${comment.id}`)
+      await octokit.rest.issues.deleteComment({
+        owner,
+        repo,
+        comment_id: comment.id,
+      });
+    }
+  }
+
+  // Only post a new comment when there are changes
+  if (filteredDiffs.length) {
+    const chunks = splitIntoChunks(output, maxCommentLength);
+    for (const chunk of chunks) {
+      await postComment(chunk);
     }
   }
 }
