@@ -357,50 +357,47 @@ function filterDiff(diffText: string) {
     }
 
     try {
-      // Extract the diff header and content
-      const [header, ...diffContent] = section.split('\n');
-      const diffParts = diffContent.join('\n').split(/^(?=[-+])/m);
+      // Split into lines and process
+      let lines = section.split('\n');
+      let filteredLines = [];
+      let skipUntilIndentationChange = false;
+      let managedFieldsIndentation = -1;
 
-      const processedParts = diffParts.map(part => {
-        if (!part.trim() || part.startsWith('@@')) return part;
-
-        const prefix = part.startsWith('+') ? '+' : part.startsWith('-') ? '-' : '';
-        let content = part.substring(prefix.length);
-
-        try {
-          // Parse YAML content
-          const yamlDoc = yaml.load(content) as any;
-          
-          // Remove managedFields if it exists
-          if (yamlDoc?.metadata?.managedFields) {
-            delete yamlDoc.metadata.managedFields;
-            
-            // Remove empty metadata object
-            if (Object.keys(yamlDoc.metadata).length === 0) {
-              delete yamlDoc.metadata;
-            }
-          }
-
-          // Convert back to YAML
-          content = yaml.dump(yamlDoc, {
-            lineWidth: -1,
-            noRefs: true,
-            quotingType: '"'
-          });
-
-          // Reapply the diff prefix to each line
-          return content.split('\n')
-            .map(line => line.trim() ? `${prefix}${line}` : line)
-            .join('\n');
-        } catch (e) {
-          // If YAML parsing fails, return the original content
-          return part;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Always keep diff headers and section headers
+        if (line.startsWith('=====') || line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) {
+          filteredLines.push(line);
+          continue;
         }
-      });
 
-      // Combine the processed parts with the header
-      let filtered = [header, ...processedParts].join('\n');
+        // Calculate the indentation level (number of spaces after +/- prefix)
+        const match = line.match(/^[+-]?\s*/);
+        const indentation = match ? match[0].length - 1 : 0; // -1 to account for the +/- prefix
 
+        // Check if this line starts managedFields
+        if (line.match(/^[+-]\s*managedFields:/)) {
+          skipUntilIndentationChange = true;
+          managedFieldsIndentation = indentation;
+          continue;
+        }
+
+        // If we're skipping and this line has less or equal indentation than managedFields,
+        // stop skipping
+        if (skipUntilIndentationChange && indentation <= managedFieldsIndentation) {
+          skipUntilIndentationChange = false;
+          managedFieldsIndentation = -1;
+        }
+
+        // Add line if we're not skipping
+        if (!skipUntilIndentationChange) {
+          filteredLines.push(line);
+        }
+      }
+
+      let filtered = filteredLines.join('\n');
+      
       // Remove existing label filters (preserve original functionality)
       filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+argocd\.argoproj\.io\/instance:.*\n---\n[+-]\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
       filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
