@@ -351,36 +351,79 @@ function filterDiff(diffText: string) {
   const sections = diffText.split(/(?=^===== )/m);
 
   const filteredSection = sections.map(section => {
-    // First, find the managedFields block
-    const managedFieldsRegex = /^[+-]?\s*managedFields:\s*\n(?:[+-]?\s+.*\n)*?(?=^[+-]?\s*\w|$)/gm;
-    
-    // Remove the managedFields block
-    let filtered = section.replace(managedFieldsRegex, '');
-    
-    // Remove any resulting empty metadata blocks
-    filtered = filtered.replace(/metadata:\n\s*(?:\n|$)/, '');
-    
-    // Remove existing label filters
-    filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+argocd\.argoproj\.io\/instance:.*\n---\n[+-]\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
-    filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
-    
-    // Clean up multiple empty lines
-    filtered = filtered.replace(/\n{3,}/g, '\n\n');
-    
-    // Remove sections that become empty after filtering
-    if (filtered.split('\n').every(line => !line.trim() || line.startsWith('====='))) {
-      return '';
+    // Skip if this is just a header section
+    if (section.trim().startsWith('=====') && !section.includes('---')) {
+      return section;
     }
-    
-    return filtered;
+
+    try {
+      // Extract the diff header and content
+      const [header, ...diffContent] = section.split('\n');
+      const diffParts = diffContent.join('\n').split(/^(?=[-+])/m);
+
+      const processedParts = diffParts.map(part => {
+        if (!part.trim() || part.startsWith('@@')) return part;
+
+        const prefix = part.startsWith('+') ? '+' : part.startsWith('-') ? '-' : '';
+        let content = part.substring(prefix.length);
+
+        try {
+          // Parse YAML content
+          const yamlDoc = yaml.load(content) as any;
+          
+          // Remove managedFields if it exists
+          if (yamlDoc?.metadata?.managedFields) {
+            delete yamlDoc.metadata.managedFields;
+            
+            // Remove empty metadata object
+            if (Object.keys(yamlDoc.metadata).length === 0) {
+              delete yamlDoc.metadata;
+            }
+          }
+
+          // Convert back to YAML
+          content = yaml.dump(yamlDoc, {
+            lineWidth: -1,
+            noRefs: true,
+            quotingType: '"'
+          });
+
+          // Reapply the diff prefix to each line
+          return content.split('\n')
+            .map(line => line.trim() ? `${prefix}${line}` : line)
+            .join('\n');
+        } catch (e) {
+          // If YAML parsing fails, return the original content
+          return part;
+        }
+      });
+
+      // Combine the processed parts with the header
+      let filtered = [header, ...processedParts].join('\n');
+
+      // Remove existing label filters (preserve original functionality)
+      filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+argocd\.argoproj\.io\/instance:.*\n---\n[+-]\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
+      filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
+
+      return filtered;
+    } catch (e) {
+      // If processing fails, fall back to original label filtering
+      let filtered = section;
+      filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+argocd\.argoproj\.io\/instance:.*\n---\n[+-]\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
+      filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
+      return filtered;
+    }
   }).filter(section => {
     // Remove empty sections and sections with only headers
     const lines = section.trim().split('\n');
     return lines.length > 1 || !lines[0].startsWith('=====');
   });
 
-  // Join the filtered sections back together
-  return filteredSection.join('\n').trim();
+  // Join the filtered sections and clean up empty lines
+  return filteredSection
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 run().catch(e => core.setFailed(e.message));
