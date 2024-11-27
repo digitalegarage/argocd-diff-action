@@ -340,21 +340,29 @@ function filterDiff(diffText) {
     // Split the diff text into sections based on the headers
     const sections = diffText.split(/(?=^===== )/m);
     const filteredSection = sections.map(section => {
-        // Remove managedFields section from the diff
-        let filtered = section.replace(/^  managedFields:[\s\S]*?(?=\n  \w|$)/m, '');
+        // First, find the managedFields block
+        const managedFieldsRegex = /^[+-]?\s*managedFields:\s*\n(?:[+-]?\s+.*\n)*?(?=^[+-]?\s*\w|$)/gm;
+        // Remove the managedFields block
+        let filtered = section.replace(managedFieldsRegex, '');
+        // Remove any resulting empty metadata blocks
+        filtered = filtered.replace(/metadata:\n\s*(?:\n|$)/, '');
         // Remove existing label filters
-        filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?<\s+argocd\.argoproj\.io\/instance:.*\n---\n>\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
-        filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?<\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
-        // Remove empty lines that might be left after removing managedFields
-        filtered = filtered.replace(/\n\n+/g, '\n\n');
+        filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+argocd\.argoproj\.io\/instance:.*\n---\n[+-]\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
+        filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
+        // Clean up multiple empty lines
+        filtered = filtered.replace(/\n{3,}/g, '\n\n');
+        // Remove sections that become empty after filtering
+        if (filtered.split('\n').every(line => !line.trim() || line.startsWith('====='))) {
+            return '';
+        }
         return filtered;
-    }).filter(section => section.trim() !== '');
-    const removeEmptyHeaders = filteredSection.filter(entry => {
-        // Remove empty strings and sections that are just headers with line numbers
-        return !entry.match(/^===== .*\/.* ======$/);
+    }).filter(section => {
+        // Remove empty sections and sections with only headers
+        const lines = section.trim().split('\n');
+        return lines.length > 1 || !lines[0].startsWith('=====');
     });
     // Join the filtered sections back together
-    return removeEmptyHeaders.join('\n').trim();
+    return filteredSection.join('\n').trim();
 }
 run().catch(e => core.setFailed(e.message));
 
