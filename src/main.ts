@@ -362,6 +362,7 @@ function filterDiff(diffText: string) {
       let filteredLines = [];
       let skipUntilIndentationChange = false;
       let managedFieldsIndentation = -1;
+      let inMetadata = false;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -383,16 +384,25 @@ function filterDiff(diffText: string) {
         const content = line.slice(match[0].length);
         const indentation = match[0].length - 1; // -1 to account for the +/- prefix
 
+        // Track if we're in metadata section
+        if (content.trim() === 'metadata:') {
+          inMetadata = true;
+        } else if (inMetadata && indentation === 0) {
+          inMetadata = false;
+        }
+
         // Check if this line is the managedFields entry
-        if (content.trim() === 'managedFields:') {
+        if (inMetadata && content.trim() === 'managedFields:') {
           skipUntilIndentationChange = true;
           managedFieldsIndentation = indentation;
           continue;
         }
 
-        // If we're skipping and find a line with less indentation than managedFields,
-        // stop skipping (removed the equal comparison)
-        if (skipUntilIndentationChange && indentation < managedFieldsIndentation) {
+        // If we're skipping and find a line with same indentation level as managedFields
+        // but not starting with a dash (not a list item), stop skipping
+        if (skipUntilIndentationChange && 
+            indentation === managedFieldsIndentation && 
+            !content.startsWith('-')) {
           skipUntilIndentationChange = false;
           managedFieldsIndentation = -1;
         }
