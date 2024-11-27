@@ -361,7 +361,6 @@ function filterDiff(diffText: string) {
       let lines = section.split('\n');
       let filteredLines = [];
       let skipUntilIndentationChange = false;
-      let managedFieldsStartLine = '';
       let managedFieldsIndentation = -1;
 
       for (let i = 0; i < lines.length; i++) {
@@ -374,23 +373,26 @@ function filterDiff(diffText: string) {
         }
 
         // Calculate the indentation level (number of spaces after +/- prefix)
-        const match = line.match(/^([+-])?(\s*)/);
-        const prefix = match?.[1] || '';
-        const indentation = (match?.[2] || '').length;
+        const match = line.match(/^([+-])\s*/);
+        if (!match) {
+          filteredLines.push(line);
+          continue;
+        }
 
-        // Check if this line starts managedFields
-        if (line.match(/^[+-]\s*managedFields:/)) {
+        const prefix = match[1];
+        const content = line.slice(match[0].length);
+        const indentation = match[0].length - 1; // -1 to account for the +/- prefix
+
+        // Check if this line is the managedFields entry
+        if (content.trim() === 'managedFields:') {
           skipUntilIndentationChange = true;
-          managedFieldsStartLine = prefix;
           managedFieldsIndentation = indentation;
           continue;
         }
 
-        // If we're skipping and this line has same prefix and less indentation than managedFields,
+        // If we're skipping and find a line with same or less indentation than managedFields,
         // stop skipping
-        if (skipUntilIndentationChange && 
-            prefix === managedFieldsStartLine && 
-            indentation < managedFieldsIndentation) {
+        if (skipUntilIndentationChange && indentation <= managedFieldsIndentation) {
           skipUntilIndentationChange = false;
           managedFieldsIndentation = -1;
         }

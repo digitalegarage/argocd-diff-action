@@ -349,7 +349,6 @@ function filterDiff(diffText) {
             let lines = section.split('\n');
             let filteredLines = [];
             let skipUntilIndentationChange = false;
-            let managedFieldsStartLine = '';
             let managedFieldsIndentation = -1;
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
@@ -359,21 +358,23 @@ function filterDiff(diffText) {
                     continue;
                 }
                 // Calculate the indentation level (number of spaces after +/- prefix)
-                const match = line.match(/^([+-])?(\s*)/);
-                const prefix = (match === null || match === void 0 ? void 0 : match[1]) || '';
-                const indentation = ((match === null || match === void 0 ? void 0 : match[2]) || '').length;
-                // Check if this line starts managedFields
-                if (line.match(/^[+-]\s*managedFields:/)) {
+                const match = line.match(/^([+-])\s*/);
+                if (!match) {
+                    filteredLines.push(line);
+                    continue;
+                }
+                const prefix = match[1];
+                const content = line.slice(match[0].length);
+                const indentation = match[0].length - 1; // -1 to account for the +/- prefix
+                // Check if this line is the managedFields entry
+                if (content.trim() === 'managedFields:') {
                     skipUntilIndentationChange = true;
-                    managedFieldsStartLine = prefix;
                     managedFieldsIndentation = indentation;
                     continue;
                 }
-                // If we're skipping and this line has same prefix and less indentation than managedFields,
+                // If we're skipping and find a line with same or less indentation than managedFields,
                 // stop skipping
-                if (skipUntilIndentationChange &&
-                    prefix === managedFieldsStartLine &&
-                    indentation < managedFieldsIndentation) {
+                if (skipUntilIndentationChange && indentation <= managedFieldsIndentation) {
                     skipUntilIndentationChange = false;
                     managedFieldsIndentation = -1;
                 }
