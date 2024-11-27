@@ -351,26 +351,26 @@ function filterDiff(diffText: string) {
   const sections = diffText.split(/(?=^===== )/m);
 
   const filteredSection = sections.map(section => {
-    // Remove managedFields section from the diff
-    let filtered = section.replace(/^  managedFields:[\s\S]*?(?=\n  \w|$)/m, '');
+    // Remove managedFields section and its contents from the diff
+    let filtered = section.replace(/^[+-]?\s*managedFields:[\s\S]*?(?=\n[^-\s]|\n[^+\s]|\n$|$)/gm, '');
     
     // Remove existing label filters
-    filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?<\s+argocd\.argoproj\.io\/instance:.*\n---\n>\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
-    filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?<\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
+    filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+argocd\.argoproj\.io\/instance:.*\n---\n[+-]\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
+    filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
     
     // Remove empty lines that might be left after removing managedFields
     filtered = filtered.replace(/\n\n+/g, '\n\n');
     
+    // Remove sections that become empty after filtering
+    if (filtered.split('\n').every(line => !line.trim() || line.startsWith('====='))) {
+      return '';
+    }
+    
     return filtered;
   }).filter(section => section.trim() !== '');
 
-  const removeEmptyHeaders = filteredSection.filter(entry => {
-    // Remove empty strings and sections that are just headers with line numbers
-    return !entry.match(/^===== .*\/.* ======$/);
-  });
-
   // Join the filtered sections back together
-  return removeEmptyHeaders.join('\n').trim();
+  return filteredSection.join('\n').trim();
 }
 
 run().catch(e => core.setFailed(e.message));
