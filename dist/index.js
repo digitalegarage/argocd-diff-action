@@ -372,9 +372,9 @@ function filterDiff(diffText) {
                     managedFieldsIndentation = indentation;
                     continue;
                 }
-                // If we're skipping and find a line with same or less indentation than managedFields,
-                // stop skipping
-                if (skipUntilIndentationChange && indentation <= managedFieldsIndentation) {
+                // If we're skipping and find a line with less indentation than managedFields,
+                // stop skipping (removed the equal comparison)
+                if (skipUntilIndentationChange && indentation < managedFieldsIndentation) {
                     skipUntilIndentationChange = false;
                     managedFieldsIndentation = -1;
                 }
