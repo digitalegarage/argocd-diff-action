@@ -340,16 +340,82 @@ function filterDiff(diffText) {
     // Split the diff text into sections based on the headers
     const sections = diffText.split(/(?=^===== )/m);
     const filteredSection = sections.map(section => {
-        var removedLabels = section.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?<\s+argocd\.argoproj\.io\/instance:.*\n---\n>\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
-        removedLabels = removedLabels.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?<\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
-        return removedLabels;
-    }).filter(section => section.trim() !== '');
-    const removeEmptyHeaders = filteredSection.filter(entry => {
-        // Remove empty strings and sections that are just headers with line numbers
-        return !entry.match(/^===== .*\/.* ======$/);
+        // Skip if this is just a header section
+        if (section.trim().startsWith('=====') && !section.includes('---')) {
+            return section;
+        }
+        try {
+            // Split into lines and process
+            let lines = section.split('\n');
+            let filteredLines = [];
+            let skipUntilIndentationChange = false;
+            let managedFieldsIndentation = -1;
+            let inMetadata = false;
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                // Always keep diff headers and section headers
+                if (line.startsWith('=====') || line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) {
+                    filteredLines.push(line);
+                    continue;
+                }
+                // Calculate the indentation level (number of spaces after +/- prefix)
+                const match = line.match(/^([+-])\s*/);
+                if (!match) {
+                    filteredLines.push(line);
+                    continue;
+                }
+                const prefix = match[1];
+                const content = line.slice(match[0].length);
+                const indentation = match[0].length - 1; // -1 to account for the +/- prefix
+                // Track if we're in metadata section
+                if (content.trim() === 'metadata:') {
+                    inMetadata = true;
+                }
+                else if (inMetadata && indentation === 0) {
+                    inMetadata = false;
+                }
+                // Check if this line is the managedFields entry
+                if (inMetadata && content.trim() === 'managedFields:') {
+                    skipUntilIndentationChange = true;
+                    managedFieldsIndentation = indentation;
+                    continue;
+                }
+                // If we're skipping and find a line with same indentation level as managedFields
+                // but not starting with a dash (not a list item), stop skipping
+                if (skipUntilIndentationChange &&
+                    indentation === managedFieldsIndentation &&
+                    !content.startsWith('-')) {
+                    skipUntilIndentationChange = false;
+                    managedFieldsIndentation = -1;
+                }
+                // Add line if we're not skipping
+                if (!skipUntilIndentationChange) {
+                    filteredLines.push(line);
+                }
+            }
+            let filtered = filteredLines.join('\n');
+            // Remove existing label filters (preserve original functionality)
+            filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+argocd\.argoproj\.io\/instance:.*\n---\n[+-]\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
+            filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
+            return filtered;
+        }
+        catch (e) {
+            // If processing fails, fall back to original label filtering
+            let filtered = section;
+            filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+argocd\.argoproj\.io\/instance:.*\n---\n[+-]\s+argocd\.argoproj\.io\/instance:.*\n?/g, '').trim();
+            filtered = filtered.replace(/(\d+(,\d+)?c\d+(,\d+)?\n)?[+-]\s+app.kubernetes.io\/part-of:.*\n?/g, '').trim();
+            return filtered;
+        }
+    }).filter(section => {
+        // Remove empty sections and sections with only headers
+        const lines = section.trim().split('\n');
+        return lines.length > 1 || !lines[0].startsWith('=====');
     });
-    // Join the filtered sections back together
-    return removeEmptyHeaders.join('\n').trim();
+    // Join the filtered sections and clean up empty lines
+    return filteredSection
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 run().catch(e => core.setFailed(e.message));
 
